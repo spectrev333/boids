@@ -6,6 +6,9 @@
 #define WINDOW_HEIGHT 800
 #define MAX_LOCAL_FLOCK_SIZE 128
 
+#define MAX_VELOCITY 10
+#define MAX_ACCELERATION 0.8
+
 typedef struct {
     Vector2 position;
     Vector2 velocity;
@@ -28,6 +31,7 @@ void UpdateBoid(Boid* boid) {
     boid->position.x = Wrap(boid->position.x, 0, WINDOW_WIDTH);
     boid->position.y = Wrap(boid->position.y, 0, WINDOW_HEIGHT);
     boid->velocity = Vector2Add(boid->velocity, boid->acceleration);
+    boid->velocity = Vector2ClampValue(boid->velocity, -MAX_VELOCITY, MAX_VELOCITY);
 }
 
 void GetLocalFlock(Boid* currentBoid, Boid* boids, const int size, LocalFlock* flock, float radius) {
@@ -41,16 +45,32 @@ void GetLocalFlock(Boid* currentBoid, Boid* boids, const int size, LocalFlock* f
     }
 }
 
-void AlignBoid(Boid* boid, LocalFlock* localFlock, float weight) {
+Vector2 GetBoidAlignmentForce(Boid* boid, LocalFlock* localFlock, float weight) {
     Vector2 averageVelocity = {0, 0};
     for (int i = 0; i < localFlock->size; i++) {
         averageVelocity = Vector2Add(averageVelocity, localFlock->boids[i].velocity);
     }
     if (localFlock->size > 0) {
         averageVelocity = Vector2Scale(averageVelocity, 1.0 / localFlock->size);
-        boid->acceleration = Vector2Subtract(averageVelocity, boid->velocity);
-        boid->acceleration = Vector2Scale(boid->acceleration, weight);
+        averageVelocity = Vector2Subtract(averageVelocity, boid->velocity);
+        averageVelocity = Vector2Scale(averageVelocity, weight);
+        averageVelocity = Vector2ClampValue(averageVelocity, -MAX_ACCELERATION, MAX_ACCELERATION);
     }
+    return averageVelocity;
+}
+
+Vector2 GetBoidCohesionForce(Boid* boid, LocalFlock* localFlock, float weight) {
+    Vector2 averagePosition = {0, 0};
+    for (int i = 0; i < localFlock->size; i++) {
+        averagePosition = Vector2Add(averagePosition, localFlock->boids[i].position);
+    }
+    if (localFlock->size > 0) {
+        averagePosition = Vector2Scale(averagePosition, 1.0 / localFlock->size);
+        averagePosition = Vector2Subtract(averagePosition, boid->position);
+        averagePosition = Vector2Scale(averagePosition, weight);
+        averagePosition = Vector2ClampValue(averagePosition, -MAX_ACCELERATION, MAX_ACCELERATION);
+    }
+    return averagePosition;
 }
 
 float RandomFloat(float min, float max) {
@@ -90,8 +110,10 @@ int main() {
         ClearBackground(RAYWHITE);
 
         for (int i = 0; i < boidCount; i++) {
-            GetLocalFlock(&boids[i], boids, boidCount, &localFlock, 50);
-            AlignBoid(&boids[i], &localFlock, 0.1);
+            GetLocalFlock(&boids[i], boids, boidCount, &localFlock, 150);
+            Vector2 allignmentForce = GetBoidAlignmentForce(&boids[i], &localFlock, 0.1);
+            Vector2 cohesionForce = GetBoidCohesionForce(&boids[i], &localFlock, 0.01);
+            boids[i].acceleration = Vector2Add(allignmentForce, cohesionForce);
             UpdateBoid(&boids[i]);
             DrawBoid(&boids[i]);
         }
