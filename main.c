@@ -1,13 +1,14 @@
 #include <stdlib.h>
+#include <math.h>
 #include "raylib.h"
 #include "raymath.h"
 
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 800
-#define MAX_LOCAL_FLOCK_SIZE 128
+#define WINDOW_WIDTH 1200
+#define WINDOW_HEIGHT 1000
+#define MAX_LOCAL_FLOCK_SIZE 128*2
 
-#define MAX_VELOCITY 10
-#define MAX_ACCELERATION 0.8
+#define MAX_VELOCITY 5
+#define MAX_ACCELERATION 1
 
 typedef struct {
     Vector2 position;
@@ -22,7 +23,7 @@ typedef struct {
 } LocalFlock;
 
 void DrawBoid(Boid* boid) {
-    DrawCircleV(boid->position, 10, RED);
+    DrawCircleV(boid->position, 5, RED);
 }
 
 void UpdateBoid(Boid* boid) {
@@ -66,11 +67,31 @@ Vector2 GetBoidCohesionForce(Boid* boid, LocalFlock* localFlock, float weight) {
     }
     if (localFlock->size > 0) {
         averagePosition = Vector2Scale(averagePosition, 1.0 / localFlock->size);
+        // get the vector from boid -> averagePosition
         averagePosition = Vector2Subtract(averagePosition, boid->position);
+        // scale it
         averagePosition = Vector2Scale(averagePosition, weight);
         averagePosition = Vector2ClampValue(averagePosition, -MAX_ACCELERATION, MAX_ACCELERATION);
     }
     return averagePosition;
+}
+
+Vector2 GetBoidSeparationForce(Boid* boid, LocalFlock* localFlock, float weight) {
+    Vector2 averageOppositeDirection = {0, 0};
+    for (int i = 0; i < localFlock->size; i++) {
+        // gets a vector that goes from other boid to me
+        Vector2 oppositeDirection = Vector2Subtract(boid->position, localFlock->boids[i].position);
+        // set the magnitude to be inversely proportional to the distance (or length)
+        oppositeDirection = Vector2Scale(oppositeDirection, 1.0 / pow(Vector2Length(oppositeDirection), 2));
+        //oppositeDirection = Vector2Normalize(oppositeDirection);
+        averageOppositeDirection = Vector2Add(averageOppositeDirection, oppositeDirection);
+    }
+    if (localFlock->size > 0) {
+        averageOppositeDirection = Vector2Scale(averageOppositeDirection, 1.0 / localFlock->size);
+        averageOppositeDirection = Vector2Scale(averageOppositeDirection, weight);
+        averageOppositeDirection = Vector2ClampValue(averageOppositeDirection, -MAX_ACCELERATION, MAX_ACCELERATION);
+    }
+    return averageOppositeDirection;
 }
 
 float RandomFloat(float min, float max) {
@@ -91,15 +112,15 @@ Vector2 RandomVector2(float min, float max) {
 }
 
 int main() {
-    InitWindow(800, 800, "Boids");
+    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Boids");
     SetTargetFPS(60);
 
-    const int boidCount = 100;
+    const int boidCount = 300;
     Boid boids[boidCount];
 
     for (int i = 0; i < boidCount; i++) {
         boids[i].position = RandomVector2(0, 800);
-        boids[i].velocity = RandomVector2(-10, 10);
+        boids[i].velocity = RandomVector2(-4, 4);
         boids[i].acceleration = (Vector2){ .x = 0, .y = 0 };
     }
 
@@ -110,10 +131,13 @@ int main() {
         ClearBackground(RAYWHITE);
 
         for (int i = 0; i < boidCount; i++) {
-            GetLocalFlock(&boids[i], boids, boidCount, &localFlock, 150);
+            GetLocalFlock(&boids[i], boids, boidCount, &localFlock, 50);
             Vector2 allignmentForce = GetBoidAlignmentForce(&boids[i], &localFlock, 0.1);
-            Vector2 cohesionForce = GetBoidCohesionForce(&boids[i], &localFlock, 0.01);
+            Vector2 cohesionForce = GetBoidCohesionForce(&boids[i], &localFlock, 0.02);
+            Vector2 separationForce = GetBoidSeparationForce(&boids[i], &localFlock, 25);
+            //boids[i].acceleration = separationForce;
             boids[i].acceleration = Vector2Add(allignmentForce, cohesionForce);
+            boids[i].acceleration = Vector2Add(boids[i].acceleration, separationForce);
             UpdateBoid(&boids[i]);
             DrawBoid(&boids[i]);
         }

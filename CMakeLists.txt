@@ -24,4 +24,4 @@ set_target_properties(raylib_shared PROPERTIES
 
 # Regular cmake stuff
 add_executable(boids_execise main.c)
-target_link_libraries(boids_execise raylib_shared)
+target_link_libraries(boids_execise raylib_shared m)
