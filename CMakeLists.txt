@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 4.0)
 project(boids_execise)
 set(CMAKE_C_STANDARD 99)
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp")
+
 include(FetchContent)
 
 # Downloads prebuild from github releases
@@ -23,5 +25,9 @@ set_target_properties(raylib_shared PROPERTIES
 )
 
 # Regular cmake stuff
-add_executable(boids_execise main.c)
-target_link_libraries(boids_execise raylib_shared m)
+add_executable(main main.c
+        timeit.h)
+target_link_libraries(main raylib_shared m)
+
+add_executable(main_omp main_omp.c)
+target_link_libraries(main_omp raylib_shared m gomp)

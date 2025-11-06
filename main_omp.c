@@ -1,15 +1,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <omp.h>
 #include "raylib.h"
 #include "raymath.h"
-#include <omp.h>
-
 #include "timeit.h"
 
 #define WINDOW_WIDTH 1200
 #define WINDOW_HEIGHT 1000
-#define MAX_LOCAL_FLOCK_SIZE 4096
+#define MAX_LOCAL_FLOCK_SIZE 4094
 
 #define MAX_VELOCITY 5
 #define MAX_ACCELERATION 1
@@ -108,10 +107,10 @@ float RandomFloat(float min, float max) {
     return min + ((float)rand() / RAND_MAX) * range;
 }
 
-Vector2 RandomVector2(float min, float max) {
+Vector2 RandomVector2(float minX, float maxX, float minY, float maxY) {
     return (Vector2){
-        .x = RandomFloat(min, max),
-        .y = RandomFloat(min, max)
+        .x = RandomFloat(minX, maxX),
+        .y = RandomFloat(minY, maxY)
     };
 }
 
@@ -120,38 +119,50 @@ int main() {
     SetTargetFPS(60);
 
     const int boidCount = 10000;
-    Boid boids[boidCount];
+    Boid* boids = malloc(boidCount * sizeof(Boid));
 
     for (int i = 0; i < boidCount; i++) {
-        boids[i].position = RandomVector2(0, 800);
-        boids[i].velocity = RandomVector2(-4, 4);
+        boids[i].position = RandomVector2(0, WINDOW_WIDTH, 0, WINDOW_HEIGHT);
+        boids[i].velocity = RandomVector2(-MAX_VELOCITY, MAX_VELOCITY, -MAX_VELOCITY, MAX_VELOCITY);
         boids[i].acceleration = (Vector2){ .x = 0, .y = 0 };
     }
 
-    LocalFlock localFlock;
-
     while (!WindowShouldClose()) {
         double frame_time_start = omp_get_wtime();
-        BeginDrawing();
-        ClearBackground(RAYWHITE);
-
+        #pragma omp parallel for
         for (int i = 0; i < boidCount; i++) {
-            GetLocalFlock(&boids[i], boids, boidCount, &localFlock, 50);
-            Vector2 allignmentForce = GetBoidAlignmentForce(&boids[i], &localFlock, 0.1);
-            Vector2 cohesionForce = GetBoidCohesionForce(&boids[i], &localFlock, 0.02);
-            Vector2 separationForce = GetBoidSeparationForce(&boids[i], &localFlock, 25);
-            //boids[i].acceleration = separationForce;
+            LocalFlock threadLocalFlock;
+
+            GetLocalFlock(&boids[i], boids, boidCount, &threadLocalFlock, 50);
+
+            Vector2 allignmentForce = GetBoidAlignmentForce(&boids[i], &threadLocalFlock, 0.1);
+            Vector2 cohesionForce = GetBoidCohesionForce(&boids[i], &threadLocalFlock, 0.02);
+            Vector2 separationForce = GetBoidSeparationForce(&boids[i], &threadLocalFlock, 25);
             boids[i].acceleration = Vector2Add(allignmentForce, cohesionForce);
             boids[i].acceleration = Vector2Add(boids[i].acceleration, separationForce);
+        } // implicit barrier
+
+        #pragma omp parallel for
+        for (int i = 0; i < boidCount; i++) {
             UpdateBoid(&boids[i]);
+        } // implicit barrier
+
+        // Drawing must be done in a singlethreaded manner
+
+        BeginDrawing();
+        ClearBackground(RAYWHITE);
+        for (int i = 0; i < boidCount; i++) {
             DrawBoid(&boids[i]);
         }
-
         double frame_time = omp_get_wtime() - frame_time_start;
         DrawRectangle(0, 0, WINDOW_WIDTH/2, 70, RAYWHITE);
         DrawText(TextFormat("FRAME TIME: %f", frame_time), 10, 10, 50, GREEN);
         EndDrawing();
+
+
     }
 
+    free(boids);
+    CloseWindow();
     return 0;
 }
