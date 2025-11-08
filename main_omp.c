@@ -6,11 +6,11 @@
 #include "raymath.h"
 #include "timeit.h"
 
-#define WINDOW_WIDTH 1200
-#define WINDOW_HEIGHT 1000
+#define WINDOW_WIDTH 2000
+#define WINDOW_HEIGHT 2000
 #define MAX_LOCAL_FLOCK_SIZE 4094
 
-#define MAX_VELOCITY 5
+#define MAX_VELOCITY 30
 #define MAX_ACCELERATION 1
 
 typedef struct {
@@ -127,9 +127,12 @@ int main() {
         boids[i].acceleration = (Vector2){ .x = 0, .y = 0 };
     }
 
+    double frameTimes = 0;
+    double measurements = 0;
+
     while (!WindowShouldClose()) {
         double frame_time_start = omp_get_wtime();
-        #pragma omp parallel for
+        #pragma omp parallel for schedule(dynamic)
         for (int i = 0; i < boidCount; i++) {
             LocalFlock threadLocalFlock;
 
@@ -142,7 +145,7 @@ int main() {
             boids[i].acceleration = Vector2Add(boids[i].acceleration, separationForce);
         } // implicit barrier
 
-        #pragma omp parallel for
+        #pragma omp parallel for schedule(dynamic)
         for (int i = 0; i < boidCount; i++) {
             UpdateBoid(&boids[i]);
         } // implicit barrier
@@ -155,12 +158,14 @@ int main() {
             DrawBoid(&boids[i]);
         }
         double frame_time = omp_get_wtime() - frame_time_start;
+        frameTimes += frame_time;
+        measurements++;
         DrawRectangle(0, 0, WINDOW_WIDTH/2, 70, RAYWHITE);
         DrawText(TextFormat("FRAME TIME: %f", frame_time), 10, 10, 50, GREEN);
         EndDrawing();
-
-
     }
+
+    printf("Average frame time: %.06f\n", frameTimes/measurements);
 
     free(boids);
     CloseWindow();
