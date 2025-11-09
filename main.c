@@ -4,15 +4,19 @@
 #include "raylib.h"
 #include "raymath.h"
 #include <omp.h>
+#include <string.h>
 
 #include "timeit.h"
 
-#define WINDOW_WIDTH 1200
-#define WINDOW_HEIGHT 1000
+#define WINDOW_WIDTH 2000
+#define WINDOW_HEIGHT 2000
 #define MAX_LOCAL_FLOCK_SIZE 4096
 
-#define MAX_VELOCITY 5
+#define MAX_VELOCITY 30
 #define MAX_ACCELERATION 1
+
+#define PERCEPTION_RADIUS 50
+#define GRID_RESOLUTION 50
 
 typedef struct {
     Vector2 position;
@@ -21,17 +25,91 @@ typedef struct {
 } Boid;
 
 typedef struct {
-    // TODO: use array of pointers??
     Boid boids[MAX_LOCAL_FLOCK_SIZE];
     int size;
 } LocalFlock;
+
+typedef struct {
+    Boid** boids;
+    int size;
+} GridCell;
+
+typedef struct {
+    GridCell** grid;
+    int gridResolution;
+    int gridHeight;
+    int gridWidth;
+} BoidGrid;
+
+BoidGrid BoidGridAlloc(int resolution, int width, int height, int cellCapacity) {
+    GridCell** cells = malloc(height * sizeof(GridCell*));
+
+    if (cells == NULL) {
+        perror("Failed to allocate grid rows");
+        return (BoidGrid){ .grid = NULL };
+    }
+
+    GridCell* data_block = (GridCell*)malloc(height * width * sizeof(GridCell));
+    if (data_block == NULL) {
+        perror("Failed to allocate grid data block");
+        free(cells);
+        return (BoidGrid){ .grid = NULL };
+    }
+
+    cells[0] = (GridCell*)cells + height;
+    for (int r = 1; r < height; r++) {
+        cells[r] = cells[r-1] + width;
+    }
+
+    for (int r = 0; r < height; r++) {
+        cells[r] = data_block + (r * width);
+    }
+
+    for (int i = 0; i < height * width; i++) {
+        data_block[i].boids = (Boid**)malloc(cellCapacity * sizeof(Boid*));
+        data_block[i].size = 0;
+
+        if (data_block[i].boids == NULL) {
+            perror("Failed to allocate internal cell array");
+            for (int j = 0; j < i; j++) {
+                free(data_block[j].boids);
+            }
+            free(data_block);
+            free(cells);
+            return (BoidGrid){ .grid = NULL };
+        }
+    }
+
+    return (BoidGrid){
+        .grid = cells,
+        .gridResolution = resolution,
+        .gridHeight = height,
+        .gridWidth = width
+    };
+}
+
+void BoidGridFree(BoidGrid* grid) {
+    if (grid == NULL || grid->grid == NULL) return;
+
+    GridCell* data_block = grid->grid[0];
+    int totalCells = grid->gridHeight * grid->gridWidth;
+
+    for (int i = 0; i < totalCells; i++) {
+        free(data_block[i].boids);
+    }
+
+    free(data_block);
+
+    free(grid->grid);
+
+    grid->grid = NULL;
+}
 
 void DrawBoid(Boid* boid) {
     DrawCircleV(boid->position, 5, RED);
 }
 
 void UpdateBoid(Boid* boid) {
-    // TODO: maybe, scale with deltaTime
     boid->position = Vector2Add(boid->position, boid->velocity);
     boid->position.x = Wrap(boid->position.x, 0, WINDOW_WIDTH);
     boid->position.y = Wrap(boid->position.y, 0, WINDOW_HEIGHT);
@@ -39,13 +117,43 @@ void UpdateBoid(Boid* boid) {
     boid->velocity = Vector2ClampValue(boid->velocity, -MAX_VELOCITY, MAX_VELOCITY);
 }
 
-void GetLocalFlock(Boid* currentBoid, Boid* boids, const int size, LocalFlock* flock, float radius) {
+void GetLocalFlockSlow(Boid* currentBoid, Boid* boids, const int size, LocalFlock* flock, float radius) {
     flock->size = 0;
     for (int i = 0; i < size; i++) {
         float dist = Vector2Distance(boids[i].position, currentBoid->position);
         if (dist < radius && currentBoid != &boids[i]) {
+            //DrawLineV(currentBoid->position, boids[i].position, BLACK);
             flock->boids[flock->size] = boids[i];
             flock->size++;
+        }
+    }
+}
+
+void GetLocalFlock(Boid* current, BoidGrid* grid, int range, LocalFlock* flock, float radius) {
+    const int row = current->position.x / grid->gridResolution;
+    const int col = current->position.y / grid->gridResolution;
+    flock->size=0;
+
+    for (int dcol = -range; dcol <= range; dcol++) {
+
+        for (int drow = -range; drow <= range; drow++) {
+            int gridRow = row+drow;
+            // if gridRol > gridHeight we get a segfault, so we wrap the grid
+            gridRow = (gridRow+grid->gridHeight)%grid->gridHeight;
+
+            int gridCol = col+dcol;
+            gridCol = (gridCol+grid->gridWidth)%grid->gridWidth;
+
+            GridCell* cell = &grid->grid[gridRow][gridCol];
+
+            for (int i = 0; i < cell->size; i++) {
+                float dist = Vector2Distance(cell->boids[i]->position, current->position);
+                if (dist < radius && current != cell->boids[i]) {
+                    flock->boids[flock->size] = *cell->boids[i];
+                    flock->size++;
+                    //DrawLineV(current->position, cell->boids[i]->position, BLACK);
+                }
+            }
         }
     }
 }
@@ -121,11 +229,15 @@ int main() {
 
     const int boidCount = 10000;
     Boid boids[boidCount];
+    int cellCapacity = 256;
+    BoidGrid boidGrid = BoidGridAlloc(GRID_RESOLUTION, WINDOW_HEIGHT/GRID_RESOLUTION, WINDOW_WIDTH/GRID_RESOLUTION, cellCapacity);
 
     for (int i = 0; i < boidCount; i++) {
-        boids[i].position = RandomVector2(0, 800);
-        boids[i].velocity = RandomVector2(-4, 4);
-        boids[i].acceleration = (Vector2){ .x = 0, .y = 0 };
+        boids[i] = (Boid) {
+            .position = RandomVector2(0, 2000),
+            .velocity = RandomVector2(-30, 30),
+            .acceleration = (Vector2){ .x = 0, .y = 0 }
+        };
     }
 
     LocalFlock localFlock;
@@ -135,16 +247,39 @@ int main() {
         BeginDrawing();
         ClearBackground(RAYWHITE);
 
+        for (int row = 0; row < boidGrid.gridHeight; row++) {
+            for (int col = 0; col < boidGrid.gridWidth; col++) {
+                boidGrid.grid[row][col].size = 0;
+            }
+        }
+
         for (int i = 0; i < boidCount; i++) {
-            GetLocalFlock(&boids[i], boids, boidCount, &localFlock, 50);
-            Vector2 allignmentForce = GetBoidAlignmentForce(&boids[i], &localFlock, 0.1);
-            Vector2 cohesionForce = GetBoidCohesionForce(&boids[i], &localFlock, 0.02);
-            Vector2 separationForce = GetBoidSeparationForce(&boids[i], &localFlock, 25);
-            //boids[i].acceleration = separationForce;
-            boids[i].acceleration = Vector2Add(allignmentForce, cohesionForce);
-            boids[i].acceleration = Vector2Add(boids[i].acceleration, separationForce);
-            UpdateBoid(&boids[i]);
-            DrawBoid(&boids[i]);
+            int col = (int)(boids[i].position.y / boidGrid.gridResolution);
+            int row = (int)(boids[i].position.x / boidGrid.gridResolution);
+            GridCell* cell = &boidGrid.grid[row][col];
+            if (cell->size < cellCapacity) {
+                cell->boids[cell->size] = &boids[i];
+                cell->size++;
+            }
+        }
+
+        for (int row = 0; row < boidGrid.gridHeight; row++) {
+            for (int col = 0; col < boidGrid.gridWidth; col++) {
+                GridCell* cell = &boidGrid.grid[row][col];
+                for (int i = 0; i < cell->size; i++) {
+                    GetLocalFlock(cell->boids[i], &boidGrid, 1, &localFlock, PERCEPTION_RADIUS);
+                    //GetLocalFlockGemini(cell->boids[i], &boidGrid, &localFlock, 50, 1);
+                    //GetLocalFlockSlow(cell->boids[i], boids, boidCount, &localFlock, PERCEPTION_RADIUS);
+                    Vector2 allignmentForce = GetBoidAlignmentForce(cell->boids[i], &localFlock, 0.1);
+                    Vector2 cohesionForce = GetBoidCohesionForce(cell->boids[i], &localFlock, 0.02);
+                    Vector2 separationForce = GetBoidSeparationForce(cell->boids[i], &localFlock, 30);
+                    //cell->boids[i].acceleration = separationForce;
+                    cell->boids[i]->acceleration = Vector2Add(allignmentForce, cohesionForce);
+                    cell->boids[i]->acceleration = Vector2Add(cell->boids[i]->acceleration, separationForce);
+                    UpdateBoid(cell->boids[i]);
+                    DrawBoid(cell->boids[i]);
+                }
+            }
         }
 
         double frame_time = omp_get_wtime() - frame_time_start;
@@ -152,6 +287,8 @@ int main() {
         DrawText(TextFormat("FRAME TIME: %f", frame_time), 10, 10, 50, GREEN);
         EndDrawing();
     }
+
+    BoidGridFree(&boidGrid);
 
     return 0;
 }
