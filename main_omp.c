@@ -42,7 +42,7 @@ typedef struct {
     int gridWidth;
 } BoidGrid;
 
-BoidGrid BoidGridAlloc(int resolution, int width, int height, int cellCapacity) {
+BoidGrid BoidGridAlloc(int resolution, int height, int width, int cellCapacity) {
     GridCell** cells = malloc(height * sizeof(GridCell*));
 
     if (cells == NULL) {
@@ -138,12 +138,12 @@ void GetLocalFlock(Boid* current, BoidGrid* grid, int range, LocalFlock* flock, 
     for (int dcol = -range; dcol <= range; dcol++) {
 
         for (int drow = -range; drow <= range; drow++) {
-            int gridRow = row+drow;
             // if gridRol > gridHeight we get a segfault, so we wrap the grid
-            gridRow = (gridRow+grid->gridHeight)%grid->gridHeight;
+            int gridRow = (row + drow) % grid->gridHeight;
+            if (gridRow < 0) gridRow += grid->gridHeight;
 
-            int gridCol = col+dcol;
-            gridCol = (gridCol+grid->gridWidth)%grid->gridWidth;
+            int gridCol = (col + dcol) % grid->gridWidth;
+            if (gridCol < 0) gridCol += grid->gridWidth;
 
             GridCell* cell = &grid->grid[gridRow][gridCol];
 
@@ -258,8 +258,8 @@ int main() {
         }
 
         for (int i = 0; i < boidCount; i++) {
-            int col = (int)(boids[i].position.y / boidGrid.gridResolution);
-            int row = (int)(boids[i].position.x / boidGrid.gridResolution);
+            int row = (int)(boids[i].position.x / boidGrid.gridResolution) % boidGrid.gridWidth;
+            int col = (int)(boids[i].position.y / boidGrid.gridResolution) % boidGrid.gridHeight;
             GridCell* cell = &boidGrid.grid[row][col];
             if (cell->size < cellCapacity) {
                 cell->boids[cell->size] = &boids[i];
@@ -274,8 +274,8 @@ int main() {
             GetLocalFlock(&boids[i], &boidGrid, 1, &threadLocalFlock, PERCEPTION_RADIUS);
 
             Vector2 allignmentForce = GetBoidAlignmentForce(&boids[i], &threadLocalFlock, 0.1);
-            Vector2 cohesionForce = GetBoidCohesionForce(&boids[i], &threadLocalFlock, 0.02);
-            Vector2 separationForce = GetBoidSeparationForce(&boids[i], &threadLocalFlock, 25);
+            Vector2 cohesionForce = GetBoidCohesionForce(&boids[i], &threadLocalFlock, 0.2);
+            Vector2 separationForce = GetBoidSeparationForce(&boids[i], &threadLocalFlock, 40);
             boids[i].acceleration = Vector2Add(allignmentForce, cohesionForce);
             boids[i].acceleration = Vector2Add(boids[i].acceleration, separationForce);
         } // implicit barrier

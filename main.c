@@ -271,8 +271,8 @@ int main() {
                     //GetLocalFlockGemini(cell->boids[i], &boidGrid, &localFlock, 50, 1);
                     //GetLocalFlockSlow(cell->boids[i], boids, boidCount, &localFlock, PERCEPTION_RADIUS);
                     Vector2 allignmentForce = GetBoidAlignmentForce(cell->boids[i], &localFlock, 0.1);
-                    Vector2 cohesionForce = GetBoidCohesionForce(cell->boids[i], &localFlock, 0.02);
-                    Vector2 separationForce = GetBoidSeparationForce(cell->boids[i], &localFlock, 30);
+                    Vector2 cohesionForce = GetBoidCohesionForce(cell->boids[i], &localFlock, 0.2);
+                    Vector2 separationForce = GetBoidSeparationForce(cell->boids[i], &localFlock, 40);
                     //cell->boids[i].acceleration = separationForce;
                     cell->boids[i]->acceleration = Vector2Add(allignmentForce, cohesionForce);
                     cell->boids[i]->acceleration = Vector2Add(cell->boids[i]->acceleration, separationForce);
