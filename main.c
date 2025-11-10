@@ -12,6 +12,8 @@
 #define WINDOW_HEIGHT 2000
 #define MAX_LOCAL_FLOCK_SIZE 4096
 
+#define WORLD_SIZE 10000
+
 #define MAX_VELOCITY 30
 #define MAX_ACCELERATION 1
 
@@ -106,13 +108,14 @@ void BoidGridFree(BoidGrid* grid) {
 }
 
 void DrawBoid(Boid* boid) {
-    DrawCircleV(boid->position, 5, RED);
+    //DrawCircleV(boid->position, 5, RED);
+    DrawRectangle(boid->position.x-5, boid->position.y-5, 10, 10, RED);
 }
 
 void UpdateBoid(Boid* boid) {
     boid->position = Vector2Add(boid->position, boid->velocity);
-    boid->position.x = Wrap(boid->position.x, 0, WINDOW_WIDTH);
-    boid->position.y = Wrap(boid->position.y, 0, WINDOW_HEIGHT);
+    boid->position.x = Wrap(boid->position.x, 0, WORLD_SIZE);
+    boid->position.y = Wrap(boid->position.y, 0, WORLD_SIZE);
     boid->velocity = Vector2Add(boid->velocity, boid->acceleration);
     boid->velocity = Vector2ClampValue(boid->velocity, -MAX_VELOCITY, MAX_VELOCITY);
 }
@@ -227,14 +230,14 @@ int main() {
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Boids");
     SetTargetFPS(60);
 
-    const int boidCount = 10000;
+    const int boidCount = 50000;
     Boid boids[boidCount];
     int cellCapacity = 256;
-    BoidGrid boidGrid = BoidGridAlloc(GRID_RESOLUTION, WINDOW_HEIGHT/GRID_RESOLUTION, WINDOW_WIDTH/GRID_RESOLUTION, cellCapacity);
+    BoidGrid boidGrid = BoidGridAlloc(GRID_RESOLUTION, WORLD_SIZE/GRID_RESOLUTION, WORLD_SIZE/GRID_RESOLUTION, cellCapacity);
 
     for (int i = 0; i < boidCount; i++) {
         boids[i] = (Boid) {
-            .position = RandomVector2(0, 2000),
+            .position = RandomVector2(0, WORLD_SIZE),
             .velocity = RandomVector2(-30, 30),
             .acceleration = (Vector2){ .x = 0, .y = 0 }
         };
@@ -242,9 +245,31 @@ int main() {
 
     LocalFlock localFlock;
 
+    Camera2D cam;
+    cam.offset = (Vector2){0, 0};
+    cam.target = (Vector2){0, 0};
+    cam.zoom = 1;
+
     while (!WindowShouldClose()) {
+
+        if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+            Vector2 delta = Vector2Scale(GetMouseDelta(), 1 / cam.zoom);
+            cam.target = Vector2Subtract(cam.target, delta);
+        }
+
+        if (GetMouseWheelMove() != 0) {
+            cam.target = GetScreenToWorld2D(GetMousePosition(), cam);
+            cam.offset = GetMousePosition();
+            if (GetMouseWheelMove() < 0) {
+                cam.zoom *= 0.75f;
+            } else {
+                cam.zoom /= 0.75f;
+            }
+        }
+
         double frame_time_start = omp_get_wtime();
         BeginDrawing();
+        BeginMode2D(cam);
         ClearBackground(RAYWHITE);
 
         for (int row = 0; row < boidGrid.gridHeight; row++) {
@@ -254,8 +279,8 @@ int main() {
         }
 
         for (int i = 0; i < boidCount; i++) {
-            int col = (int)(boids[i].position.y / boidGrid.gridResolution);
-            int row = (int)(boids[i].position.x / boidGrid.gridResolution);
+            int col = (int)(boids[i].position.y / boidGrid.gridResolution) % boidGrid.gridWidth;
+            int row = (int)(boids[i].position.x / boidGrid.gridResolution) % boidGrid.gridHeight;
             GridCell* cell = &boidGrid.grid[row][col];
             if (cell->size < cellCapacity) {
                 cell->boids[cell->size] = &boids[i];
@@ -282,6 +307,7 @@ int main() {
             }
         }
 
+        EndMode2D();
         double frame_time = omp_get_wtime() - frame_time_start;
         DrawRectangle(0, 0, WINDOW_WIDTH/2, 70, RAYWHITE);
         DrawText(TextFormat("FRAME TIME: %f", frame_time), 10, 10, 50, GREEN);
