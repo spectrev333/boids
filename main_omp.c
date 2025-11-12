@@ -28,7 +28,9 @@ typedef struct {
 } Boid;
 
 typedef struct {
-    Boid boids[MAX_LOCAL_FLOCK_SIZE];
+    Vector2 velocitiesSum;
+    Vector2 positionsSum;
+    Vector2 oppositeDirectionsSum;
     int size;
 } LocalFlock;
 
@@ -121,22 +123,13 @@ void UpdateBoid(Boid* boid) {
     boid->velocity = Vector2ClampValue(boid->velocity, -MAX_VELOCITY, MAX_VELOCITY);
 }
 
-void GetLocalFlockSlow(Boid* currentBoid, Boid* boids, const int size, LocalFlock* flock, float radius) {
-    flock->size = 0;
-    for (int i = 0; i < size; i++) {
-        float dist = Vector2Distance(boids[i].position, currentBoid->position);
-        if (dist < radius && currentBoid != &boids[i]) {
-            //DrawLineV(currentBoid->position, boids[i].position, BLACK);
-            flock->boids[flock->size] = boids[i];
-            flock->size++;
-        }
-    }
-}
-
 void GetLocalFlock(Boid* current, BoidGrid* grid, int range, LocalFlock* flock, float radius) {
     const int row = current->position.x / grid->gridResolution;
     const int col = current->position.y / grid->gridResolution;
-    flock->size=0;
+    flock->positionsSum = (Vector2){0,0};
+    flock->velocitiesSum = (Vector2){0,0};
+    flock->oppositeDirectionsSum = (Vector2){0,0};
+    flock->size = 0;
 
     for (int dcol = -range; dcol <= range; dcol++) {
 
@@ -153,9 +146,14 @@ void GetLocalFlock(Boid* current, BoidGrid* grid, int range, LocalFlock* flock, 
             for (int i = 0; i < cell->size; i++) {
                 float dist = Vector2Distance(cell->boids[i]->position, current->position);
                 if (dist < radius && current != cell->boids[i]) {
-                    flock->boids[flock->size] = *cell->boids[i];
+                    flock->velocitiesSum = Vector2Add(flock->velocitiesSum, cell->boids[i]->velocity);
+                    flock->positionsSum = Vector2Add(flock->positionsSum, cell->boids[i]->position);
+                    Vector2 oppositeDirection = Vector2Subtract(current->position, cell->boids[i]->position);
+                    if (dist > 0.0001f) {
+                        oppositeDirection = Vector2Scale(oppositeDirection, 1.0 / pow(Vector2Length(oppositeDirection), 2));
+                        flock->oppositeDirectionsSum = Vector2Add(flock->oppositeDirectionsSum, oppositeDirection);
+                    }
                     flock->size++;
-                    //DrawLineV(current->position, cell->boids[i]->position, BLACK);
                 }
             }
         }
@@ -163,10 +161,7 @@ void GetLocalFlock(Boid* current, BoidGrid* grid, int range, LocalFlock* flock, 
 }
 
 Vector2 GetBoidAlignmentForce(Boid* boid, LocalFlock* localFlock, float weight) {
-    Vector2 averageVelocity = {0, 0};
-    for (int i = 0; i < localFlock->size; i++) {
-        averageVelocity = Vector2Add(averageVelocity, localFlock->boids[i].velocity);
-    }
+    Vector2 averageVelocity = localFlock->velocitiesSum;
     if (localFlock->size > 0) {
         averageVelocity = Vector2Scale(averageVelocity, 1.0 / localFlock->size);
         averageVelocity = Vector2Subtract(averageVelocity, boid->velocity);
@@ -177,10 +172,7 @@ Vector2 GetBoidAlignmentForce(Boid* boid, LocalFlock* localFlock, float weight) 
 }
 
 Vector2 GetBoidCohesionForce(Boid* boid, LocalFlock* localFlock, float weight) {
-    Vector2 averagePosition = {0, 0};
-    for (int i = 0; i < localFlock->size; i++) {
-        averagePosition = Vector2Add(averagePosition, localFlock->boids[i].position);
-    }
+    Vector2 averagePosition = localFlock->positionsSum;
     if (localFlock->size > 0) {
         averagePosition = Vector2Scale(averagePosition, 1.0 / localFlock->size);
         // get the vector from boid -> averagePosition
@@ -193,17 +185,7 @@ Vector2 GetBoidCohesionForce(Boid* boid, LocalFlock* localFlock, float weight) {
 }
 
 Vector2 GetBoidSeparationForce(Boid* boid, LocalFlock* localFlock, float weight) {
-    Vector2 averageOppositeDirection = {0, 0};
-    for (int i = 0; i < localFlock->size; i++) {
-        // gets a vector that goes from other boid to me
-        Vector2 oppositeDirection = Vector2Subtract(boid->position, localFlock->boids[i].position);
-        // set the magnitude to be inversely proportional to the distance (or length)
-        float distSqr = Vector2LengthSqr(oppositeDirection);
-        if (distSqr > 0.0001f) {
-            oppositeDirection = Vector2Scale(oppositeDirection, 1.0 / distSqr);
-        }
-        averageOppositeDirection = Vector2Add(averageOppositeDirection, oppositeDirection);
-    }
+    Vector2 averageOppositeDirection = localFlock->oppositeDirectionsSum;
     if (localFlock->size > 0) {
         averageOppositeDirection = Vector2Scale(averageOppositeDirection, 1.0 / localFlock->size);
         averageOppositeDirection = Vector2Scale(averageOppositeDirection, weight);
@@ -233,7 +215,7 @@ int main() {
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Boids");
     SetTargetFPS(60);
 
-    const int boidCount = 10000;
+    const int boidCount = 50000;
     Boid boids[boidCount];
     int cellCapacity = 256;
     static_assert(WINDOW_WIDTH%GRID_RESOLUTION==0 && WINDOW_HEIGHT%GRID_RESOLUTION==0);
@@ -253,6 +235,7 @@ int main() {
     Camera2D cam;
     cam.offset = (Vector2){0, 0};
     cam.target = (Vector2){0, 0};
+    cam.rotation = 0;
     cam.zoom = 1;
 
     while (!WindowShouldClose()) {
@@ -297,8 +280,8 @@ int main() {
 
             GetLocalFlock(&boids[i], &boidGrid, 1, &threadLocalFlock, PERCEPTION_RADIUS);
 
-            Vector2 allignmentForce = GetBoidAlignmentForce(&boids[i], &threadLocalFlock, 0.1);
-            Vector2 cohesionForce = GetBoidCohesionForce(&boids[i], &threadLocalFlock, 0.1);
+            Vector2 allignmentForce = GetBoidAlignmentForce(&boids[i], &threadLocalFlock, 0.1f);
+            Vector2 cohesionForce = GetBoidCohesionForce(&boids[i], &threadLocalFlock, 0.03f);
             Vector2 separationForce = GetBoidSeparationForce(&boids[i], &threadLocalFlock, 50);
             boids[i].acceleration = Vector2Add(allignmentForce, cohesionForce);
             boids[i].acceleration = Vector2Add(boids[i].acceleration, separationForce);
