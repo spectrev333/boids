@@ -230,7 +230,7 @@ int main() {
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Boids");
     SetTargetFPS(60);
 
-    const int boidCount = 50000;
+    const int boidCount = 10000;
     Boid boids[boidCount];
     int cellCapacity = 256;
     BoidGrid boidGrid = BoidGridAlloc(GRID_RESOLUTION, WORLD_SIZE/GRID_RESOLUTION, WORLD_SIZE/GRID_RESOLUTION, cellCapacity);
@@ -244,6 +244,9 @@ int main() {
     }
 
     LocalFlock localFlock;
+
+    double frameTimes = 0;
+    double measurements = 0;
 
     Camera2D cam;
     cam.offset = (Vector2){0, 0};
@@ -309,11 +312,16 @@ int main() {
 
         EndMode2D();
         double frame_time = omp_get_wtime() - frame_time_start;
+        frameTimes += frame_time;
+        measurements++;
         DrawRectangle(0, 0, WINDOW_WIDTH/2, 70, RAYWHITE);
         DrawText(TextFormat("FRAME TIME: %f", frame_time), 10, 10, 50, GREEN);
         EndDrawing();
     }
 
+    printf("Average frame time: %f", frameTimes/measurements);
+
+    CloseWindow();
     BoidGridFree(&boidGrid);
 
     return 0;

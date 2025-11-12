@@ -233,7 +233,7 @@ int main() {
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Boids");
     SetTargetFPS(60);
 
-    const int boidCount = 50000;
+    const int boidCount = 10000;
     Boid boids[boidCount];
     int cellCapacity = 256;
     static_assert(WINDOW_WIDTH%GRID_RESOLUTION==0 && WINDOW_HEIGHT%GRID_RESOLUTION==0);
@@ -298,8 +298,8 @@ int main() {
             GetLocalFlock(&boids[i], &boidGrid, 1, &threadLocalFlock, PERCEPTION_RADIUS);
 
             Vector2 allignmentForce = GetBoidAlignmentForce(&boids[i], &threadLocalFlock, 0.1);
-            Vector2 cohesionForce = GetBoidCohesionForce(&boids[i], &threadLocalFlock, 0.2);
-            Vector2 separationForce = GetBoidSeparationForce(&boids[i], &threadLocalFlock, 40);
+            Vector2 cohesionForce = GetBoidCohesionForce(&boids[i], &threadLocalFlock, 0.1);
+            Vector2 separationForce = GetBoidSeparationForce(&boids[i], &threadLocalFlock, 50);
             boids[i].acceleration = Vector2Add(allignmentForce, cohesionForce);
             boids[i].acceleration = Vector2Add(boids[i].acceleration, separationForce);
         } // implicit barrier
@@ -328,6 +328,9 @@ int main() {
         EndDrawing();
     }
 
+    printf("Average frame time: %f", frameTimes/measurements);
+
+    CloseWindow();
     BoidGridFree(&boidGrid);
 
     return 0;
