@@ -12,8 +12,9 @@
 #define WINDOW_HEIGHT 2000
 #define MAX_LOCAL_FLOCK_SIZE 4096
 
-#define WORLD_SIZE 10000
+#define WORLD_SIZE 5000
 
+#define MIN_VELOCITY 10
 #define MAX_VELOCITY 30
 #define MAX_ACCELERATION 1
 
@@ -119,7 +120,13 @@ void UpdateBoid(Boid* boid) {
     boid->position.x = Wrap(boid->position.x, 0, WORLD_SIZE);
     boid->position.y = Wrap(boid->position.y, 0, WORLD_SIZE);
     boid->velocity = Vector2Add(boid->velocity, boid->acceleration);
-    boid->velocity = Vector2ClampValue(boid->velocity, -MAX_VELOCITY, MAX_VELOCITY);
+    //boid->velocity = Vector2ClampValue(boid->velocity, -MAX_VELOCITY, MAX_VELOCITY);
+    float speedSqr = Vector2LengthSqr(boid->velocity);
+    if (speedSqr > MAX_VELOCITY * MAX_VELOCITY) {
+        boid->velocity = Vector2Scale(Vector2Normalize(boid->velocity), MAX_VELOCITY);
+    } else if (speedSqr < MIN_VELOCITY * MIN_VELOCITY) {
+        boid->velocity = Vector2Scale(Vector2Normalize(boid->velocity), MIN_VELOCITY);
+    }
 }
 
 
@@ -144,13 +151,13 @@ void GetLocalFlock(Boid* current, BoidGrid* grid, int range, LocalFlock* flock, 
             GridCell* cell = &grid->grid[gridRow][gridCol];
 
             for (int i = 0; i < cell->size; i++) {
-                float dist = Vector2Distance(cell->boids[i]->position, current->position);
-                if (dist < radius && current != cell->boids[i]) {
+                float dist = Vector2DistanceSqr(cell->boids[i]->position, current->position);
+                if (dist < radius*radius && current != cell->boids[i]) {
                     flock->velocitiesSum = Vector2Add(flock->velocitiesSum, cell->boids[i]->velocity);
                     flock->positionsSum = Vector2Add(flock->positionsSum, cell->boids[i]->position);
                     Vector2 oppositeDirection = Vector2Subtract(current->position, cell->boids[i]->position);
                     if (dist > 0.0001f) {
-                        oppositeDirection = Vector2Scale(oppositeDirection, 1.0 / pow(Vector2Length(oppositeDirection), 2));
+                        oppositeDirection = Vector2Scale(oppositeDirection, 1.0f / dist);
                         flock->oppositeDirectionsSum = Vector2Add(flock->oppositeDirectionsSum, oppositeDirection);
                     }
                     flock->size++;
@@ -215,7 +222,7 @@ int main() {
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Boids");
     SetTargetFPS(60);
 
-    const int boidCount = 10000;
+    const int boidCount = 50000;
     Boid boids[boidCount];
     int cellCapacity = 256;
     BoidGrid boidGrid = BoidGridAlloc(GRID_RESOLUTION, WORLD_SIZE/GRID_RESOLUTION, WORLD_SIZE/GRID_RESOLUTION, cellCapacity);
@@ -236,6 +243,7 @@ int main() {
     Camera2D cam;
     cam.offset = (Vector2){0, 0};
     cam.target = (Vector2){0, 0};
+    cam.rotation = 0;
     cam.zoom = 1;
 
     while (!WindowShouldClose()) {
@@ -281,12 +289,9 @@ int main() {
                 GridCell* cell = &boidGrid.grid[row][col];
                 for (int i = 0; i < cell->size; i++) {
                     GetLocalFlock(cell->boids[i], &boidGrid, 1, &localFlock, PERCEPTION_RADIUS);
-                    //GetLocalFlockGemini(cell->boids[i], &boidGrid, &localFlock, 50, 1);
-                    //GetLocalFlockSlow(cell->boids[i], boids, boidCount, &localFlock, PERCEPTION_RADIUS);
-                    Vector2 allignmentForce = GetBoidAlignmentForce(cell->boids[i], &localFlock, 0.1);
-                    Vector2 cohesionForce = GetBoidCohesionForce(cell->boids[i], &localFlock, 0.2);
+                    Vector2 allignmentForce = GetBoidAlignmentForce(cell->boids[i], &localFlock, 0.5);
+                    Vector2 cohesionForce = GetBoidCohesionForce(cell->boids[i], &localFlock, 0.01);
                     Vector2 separationForce = GetBoidSeparationForce(cell->boids[i], &localFlock, 40);
-                    //cell->boids[i].acceleration = separationForce;
                     cell->boids[i]->acceleration = Vector2Add(allignmentForce, cohesionForce);
                     cell->boids[i]->acceleration = Vector2Add(cell->boids[i]->acceleration, separationForce);
                     UpdateBoid(cell->boids[i]);
