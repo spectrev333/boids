@@ -21,6 +21,9 @@
 #define PERCEPTION_RADIUS 50
 #define GRID_RESOLUTION 50
 
+#define BENCHMARK_MODE
+#define BENCHMARK_FRAMES 100
+
 typedef struct {
     Vector2 position;
     Vector2 velocity;
@@ -35,35 +38,35 @@ typedef struct {
 } LocalFlock;
 
 typedef struct {
-    Boid** boids;
+    Boid **boids;
     int size;
 } GridCell;
 
 typedef struct {
-    GridCell** grid;
+    GridCell **grid;
     int gridResolution;
     int gridHeight;
     int gridWidth;
 } BoidGrid;
 
 BoidGrid BoidGridAlloc(int resolution, int width, int height, int cellCapacity) {
-    GridCell** cells = malloc(height * sizeof(GridCell*));
+    GridCell **cells = malloc(height * sizeof(GridCell *));
 
     if (cells == NULL) {
         perror("Failed to allocate grid rows");
-        return (BoidGrid){ .grid = NULL };
+        return (BoidGrid){.grid = NULL};
     }
 
-    GridCell* data_block = (GridCell*)malloc(height * width * sizeof(GridCell));
+    GridCell *data_block = (GridCell *) malloc(height * width * sizeof(GridCell));
     if (data_block == NULL) {
         perror("Failed to allocate grid data block");
         free(cells);
-        return (BoidGrid){ .grid = NULL };
+        return (BoidGrid){.grid = NULL};
     }
 
-    cells[0] = (GridCell*)cells + height;
+    cells[0] = (GridCell *) cells + height;
     for (int r = 1; r < height; r++) {
-        cells[r] = cells[r-1] + width;
+        cells[r] = cells[r - 1] + width;
     }
 
     for (int r = 0; r < height; r++) {
@@ -71,7 +74,7 @@ BoidGrid BoidGridAlloc(int resolution, int width, int height, int cellCapacity) 
     }
 
     for (int i = 0; i < height * width; i++) {
-        data_block[i].boids = (Boid**)malloc(cellCapacity * sizeof(Boid*));
+        data_block[i].boids = (Boid **) malloc(cellCapacity * sizeof(Boid *));
         data_block[i].size = 0;
 
         if (data_block[i].boids == NULL) {
@@ -81,7 +84,7 @@ BoidGrid BoidGridAlloc(int resolution, int width, int height, int cellCapacity) 
             }
             free(data_block);
             free(cells);
-            return (BoidGrid){ .grid = NULL };
+            return (BoidGrid){.grid = NULL};
         }
     }
 
@@ -93,10 +96,10 @@ BoidGrid BoidGridAlloc(int resolution, int width, int height, int cellCapacity) 
     };
 }
 
-void BoidGridFree(BoidGrid* grid) {
+void BoidGridFree(BoidGrid *grid) {
     if (grid == NULL || grid->grid == NULL) return;
 
-    GridCell* data_block = grid->grid[0];
+    GridCell *data_block = grid->grid[0];
     int totalCells = grid->gridHeight * grid->gridWidth;
 
     for (int i = 0; i < totalCells; i++) {
@@ -110,12 +113,12 @@ void BoidGridFree(BoidGrid* grid) {
     grid->grid = NULL;
 }
 
-void DrawBoid(Boid* boid) {
+void DrawBoid(Boid *boid) {
     //DrawCircleV(boid->position, 5, RED);
-    DrawRectangle(boid->position.x-5, boid->position.y-5, 10, 10, RED);
+    DrawRectangle(boid->position.x - 5, boid->position.y - 5, 10, 10, RED);
 }
 
-void UpdateBoid(Boid* boid) {
+void UpdateBoid(Boid *boid) {
     boid->position = Vector2Add(boid->position, boid->velocity);
     boid->position.x = Wrap(boid->position.x, 0, WORLD_SIZE);
     boid->position.y = Wrap(boid->position.y, 0, WORLD_SIZE);
@@ -130,16 +133,15 @@ void UpdateBoid(Boid* boid) {
 }
 
 
-void GetLocalFlock(Boid* current, BoidGrid* grid, int range, LocalFlock* flock, float radius) {
+void GetLocalFlock(Boid *current, BoidGrid *grid, int range, LocalFlock *flock, float radius) {
     const int row = current->position.x / grid->gridResolution;
     const int col = current->position.y / grid->gridResolution;
-    flock->positionsSum = (Vector2){0,0};
-    flock->velocitiesSum = (Vector2){0,0};
-    flock->oppositeDirectionsSum = (Vector2){0,0};
+    flock->positionsSum = (Vector2){0, 0};
+    flock->velocitiesSum = (Vector2){0, 0};
+    flock->oppositeDirectionsSum = (Vector2){0, 0};
     flock->size = 0;
 
     for (int dcol = -range; dcol <= range; dcol++) {
-
         for (int drow = -range; drow <= range; drow++) {
             // if gridRol > gridHeight we get a segfault, so we wrap the grid
             int gridRow = (row + drow) % grid->gridHeight;
@@ -148,11 +150,11 @@ void GetLocalFlock(Boid* current, BoidGrid* grid, int range, LocalFlock* flock, 
             int gridCol = (col + dcol) % grid->gridWidth;
             if (gridCol < 0) gridCol += grid->gridWidth;
 
-            GridCell* cell = &grid->grid[gridRow][gridCol];
+            GridCell *cell = &grid->grid[gridRow][gridCol];
 
             for (int i = 0; i < cell->size; i++) {
                 float dist = Vector2DistanceSqr(cell->boids[i]->position, current->position);
-                if (dist < radius*radius && current != cell->boids[i]) {
+                if (dist < radius * radius && current != cell->boids[i]) {
                     flock->velocitiesSum = Vector2Add(flock->velocitiesSum, cell->boids[i]->velocity);
                     flock->positionsSum = Vector2Add(flock->positionsSum, cell->boids[i]->position);
                     Vector2 oppositeDirection = Vector2Subtract(current->position, cell->boids[i]->position);
@@ -167,7 +169,7 @@ void GetLocalFlock(Boid* current, BoidGrid* grid, int range, LocalFlock* flock, 
     }
 }
 
-Vector2 GetBoidAlignmentForce(Boid* boid, LocalFlock* localFlock, float weight) {
+Vector2 GetBoidAlignmentForce(Boid *boid, LocalFlock *localFlock, float weight) {
     Vector2 averageVelocity = localFlock->velocitiesSum;
     if (localFlock->size > 0) {
         averageVelocity = Vector2Scale(averageVelocity, 1.0 / localFlock->size);
@@ -178,7 +180,7 @@ Vector2 GetBoidAlignmentForce(Boid* boid, LocalFlock* localFlock, float weight) 
     return averageVelocity;
 }
 
-Vector2 GetBoidCohesionForce(Boid* boid, LocalFlock* localFlock, float weight) {
+Vector2 GetBoidCohesionForce(Boid *boid, LocalFlock *localFlock, float weight) {
     Vector2 averagePosition = localFlock->positionsSum;
     if (localFlock->size > 0) {
         averagePosition = Vector2Scale(averagePosition, 1.0 / localFlock->size);
@@ -191,7 +193,7 @@ Vector2 GetBoidCohesionForce(Boid* boid, LocalFlock* localFlock, float weight) {
     return averagePosition;
 }
 
-Vector2 GetBoidSeparationForce(Boid* boid, LocalFlock* localFlock, float weight) {
+Vector2 GetBoidSeparationForce(Boid *boid, LocalFlock *localFlock, float weight) {
     Vector2 averageOppositeDirection = localFlock->oppositeDirectionsSum;
     if (localFlock->size > 0) {
         averageOppositeDirection = Vector2Scale(averageOppositeDirection, 1.0 / localFlock->size);
@@ -208,7 +210,7 @@ float RandomFloat(float min, float max) {
     // Scale the result of rand() (0 to RAND_MAX) to the desired range (0 to range)
     // and then offset by min.
     // We cast rand() to float to ensure floating-point division.
-    return min + ((float)rand() / RAND_MAX) * range;
+    return min + ((float) rand() / RAND_MAX) * range;
 }
 
 Vector2 RandomVector2(float min, float max) {
@@ -222,16 +224,19 @@ int main() {
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Boids");
     SetTargetFPS(60);
 
+    srand(10);
+
     const int boidCount = 50000;
     Boid boids[boidCount];
     int cellCapacity = 256;
-    BoidGrid boidGrid = BoidGridAlloc(GRID_RESOLUTION, WORLD_SIZE/GRID_RESOLUTION, WORLD_SIZE/GRID_RESOLUTION, cellCapacity);
+    BoidGrid boidGrid = BoidGridAlloc(GRID_RESOLUTION, WORLD_SIZE / GRID_RESOLUTION, WORLD_SIZE / GRID_RESOLUTION,
+                                      cellCapacity);
 
     for (int i = 0; i < boidCount; i++) {
-        boids[i] = (Boid) {
+        boids[i] = (Boid){
             .position = RandomVector2(0, WORLD_SIZE),
             .velocity = RandomVector2(-30, 30),
-            .acceleration = (Vector2){ .x = 0, .y = 0 }
+            .acceleration = (Vector2){.x = 0, .y = 0}
         };
     }
 
@@ -246,8 +251,11 @@ int main() {
     cam.rotation = 0;
     cam.zoom = 1;
 
-    while (!WindowShouldClose()) {
-
+#ifdef BENCHMARK_MODE
+    for (int i = 0; i < BENCHMARK_FRAMES; i++) {
+#else
+        while (!WindowShouldClose()) {
+#endif
         if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
             Vector2 delta = Vector2Scale(GetMouseDelta(), 1 / cam.zoom);
             cam.target = Vector2Subtract(cam.target, delta);
@@ -275,44 +283,38 @@ int main() {
         }
 
         for (int i = 0; i < boidCount; i++) {
-            int col = (int)(boids[i].position.y / boidGrid.gridResolution) % boidGrid.gridWidth;
-            int row = (int)(boids[i].position.x / boidGrid.gridResolution) % boidGrid.gridHeight;
-            GridCell* cell = &boidGrid.grid[row][col];
+            int col = (int) (boids[i].position.y / boidGrid.gridResolution) % boidGrid.gridWidth;
+            int row = (int) (boids[i].position.x / boidGrid.gridResolution) % boidGrid.gridHeight;
+            GridCell *cell = &boidGrid.grid[row][col];
             if (cell->size < cellCapacity) {
                 cell->boids[cell->size] = &boids[i];
                 cell->size++;
             }
         }
 
-        for (int row = 0; row < boidGrid.gridHeight; row++) {
-            for (int col = 0; col < boidGrid.gridWidth; col++) {
-                GridCell* cell = &boidGrid.grid[row][col];
-                for (int i = 0; i < cell->size; i++) {
-                    GetLocalFlock(cell->boids[i], &boidGrid, 1, &localFlock, PERCEPTION_RADIUS);
-                    Vector2 allignmentForce = GetBoidAlignmentForce(cell->boids[i], &localFlock, 0.5);
-                    Vector2 cohesionForce = GetBoidCohesionForce(cell->boids[i], &localFlock, 0.01);
-                    Vector2 separationForce = GetBoidSeparationForce(cell->boids[i], &localFlock, 40);
-                    cell->boids[i]->acceleration = Vector2Add(allignmentForce, cohesionForce);
-                    cell->boids[i]->acceleration = Vector2Add(cell->boids[i]->acceleration, separationForce);
-                    UpdateBoid(cell->boids[i]);
-                    DrawBoid(cell->boids[i]);
-                }
-            }
+        for (int i = 0; i < boidCount; i++) {
+            GetLocalFlock(&boids[i], &boidGrid, 1, &localFlock, PERCEPTION_RADIUS);
+            Vector2 allignmentForce = GetBoidAlignmentForce(&boids[i], &localFlock, 0.1f);
+            Vector2 cohesionForce = GetBoidCohesionForce(&boids[i], &localFlock, 0.03f);
+            Vector2 separationForce = GetBoidSeparationForce(&boids[i], &localFlock, 50);
+            boids[i].acceleration = Vector2Add(allignmentForce, cohesionForce);
+            boids[i].acceleration = Vector2Add(boids[i].acceleration, separationForce);
+            UpdateBoid(&boids[i]);
+            DrawBoid(&boids[i]);
         }
 
         EndMode2D();
         double frame_time = omp_get_wtime() - frame_time_start;
         frameTimes += frame_time;
         measurements++;
-        DrawRectangle(0, 0, WINDOW_WIDTH/2, 70, RAYWHITE);
+        DrawRectangle(0, 0, WINDOW_WIDTH / 2, 70, RAYWHITE);
         DrawText(TextFormat("FRAME TIME: %f", frame_time), 10, 10, 50, GREEN);
         EndDrawing();
     }
 
-    printf("Average frame time: %f", frameTimes/measurements);
-
     CloseWindow();
     BoidGridFree(&boidGrid);
 
+    printf("Average frame time: %f", frameTimes / measurements);
     return 0;
 }
