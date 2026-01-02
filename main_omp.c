@@ -244,6 +244,7 @@ int main() {
     double frameTimes = 0;
     double measurements = 0;
 
+#pragma omp parallel default(none) shared(boidGrid, boids, frameTimes, measurements) firstprivate(boidCount, cellCapacity, csvfile)
     for (int frame = 0; frame < BENCHMARK_FRAMES; frame++) {
         double frame_time_start = omp_get_wtime();
 
@@ -254,6 +255,7 @@ int main() {
             }
         }
 
+#pragma omp single
         for (int i = 0; i < boidCount; i++) {
             int row = (int) (boids[i].position.x / boidGrid.gridResolution) % boidGrid.gridWidth;
             int col = (int) (boids[i].position.y / boidGrid.gridResolution) % boidGrid.gridHeight;
@@ -264,7 +266,7 @@ int main() {
             }
         }
 
-#pragma omp parallel for schedule(dynamic)
+#pragma omp for schedule(dynamic)
         for (int i = 0; i < boidCount; i++) {
             LocalFlock threadLocalFlock;
 
@@ -277,16 +279,20 @@ int main() {
             boids[i].acceleration = Vector2Add(boids[i].acceleration, separationForce);
         } // implicit barrier
 
-#pragma omp parallel for schedule(dynamic)
+#pragma omp for schedule(dynamic)
         for (int i = 0; i < boidCount; i++) {
             UpdateBoid(&boids[i]);
         } // implicit barrier
 
-        double frame_time = omp_get_wtime() - frame_time_start;
-        fprintf(csvfile, "%d;%f\n", frame, frame_time);
-        frameTimes += frame_time;
-        measurements++;
+#pragma omp masked
+        {
+            double frame_time = omp_get_wtime() - frame_time_start;
+            fprintf(csvfile, "%d;%f\n", frame, frame_time);
+            frameTimes += frame_time;
+            measurements++;
+        }
     }
+
 
     fclose(csvfile);
 
