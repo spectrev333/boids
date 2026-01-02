@@ -22,7 +22,6 @@
 #define PERCEPTION_RADIUS 50
 #define GRID_RESOLUTION 50
 
-#define BENCHMARK_MODE
 #define BENCHMARK_FRAMES 100
 
 typedef struct {
@@ -222,10 +221,10 @@ Vector2 RandomVector2(float min, float max) {
 }
 
 int main() {
-    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Boids");
-    SetTargetFPS(60);
-
     srand(10);
+
+    FILE* csvfile = fopen("main_omp.csv", "w");
+    fprintf(csvfile,"frame_no;time\n");
 
     const int boidCount = 50000;
     Boid boids[boidCount];
@@ -245,32 +244,7 @@ int main() {
     double frameTimes = 0;
     double measurements = 0;
 
-    Camera2D cam;
-    cam.offset = (Vector2){0, 0};
-    cam.target = (Vector2){0, 0};
-    cam.rotation = 0;
-    cam.zoom = 1;
-
-#ifdef BENCHMARK_MODE
-    for (int i = 0; i < BENCHMARK_FRAMES; i++) {
-#else
-        while (!WindowShouldClose()) {
-#endif
-        if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
-            Vector2 delta = Vector2Scale(GetMouseDelta(), 1 / cam.zoom);
-            cam.target = Vector2Subtract(cam.target, delta);
-        }
-
-        if (GetMouseWheelMove() != 0) {
-            cam.target = GetScreenToWorld2D(GetMousePosition(), cam);
-            cam.offset = GetMousePosition();
-            if (GetMouseWheelMove() < 0) {
-                cam.zoom *= 0.75f;
-            } else {
-                cam.zoom /= 0.75f;
-            }
-        }
-
+    for (int frame = 0; frame < BENCHMARK_FRAMES; frame++) {
         double frame_time_start = omp_get_wtime();
 
 #pragma omp for collapse(2)
@@ -308,26 +282,14 @@ int main() {
             UpdateBoid(&boids[i]);
         } // implicit barrier
 
-        // Drawing must be done in a singlethreaded manner
-
-        BeginDrawing();
-        BeginMode2D(cam);
-        ClearBackground(RAYWHITE);
-        for (int i = 0; i < boidCount; i++) {
-            DrawBoid(&boids[i]);
-        }
-
-        EndMode2D();
-
         double frame_time = omp_get_wtime() - frame_time_start;
+        fprintf(csvfile, "%d;%f\n", frame, frame_time);
         frameTimes += frame_time;
         measurements++;
-        DrawRectangle(0, 0, WINDOW_WIDTH / 2, 70, RAYWHITE);
-        DrawText(TextFormat("FRAME TIME: %f", frame_time), 10, 10, 50, GREEN);
-        EndDrawing();
     }
 
-    CloseWindow();
+    fclose(csvfile);
+
     BoidGridFree(&boidGrid);
 
     printf("Average frame time: %f\n", frameTimes / measurements);
