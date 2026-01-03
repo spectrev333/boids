@@ -278,7 +278,10 @@ int main(int argc, char** argv) {
             Vector2 separationForce = GetBoidSeparationForce(&boids[i], &localFlock, 50);
             boids[i].acceleration = Vector2Add(allignmentForce, cohesionForce);
             boids[i].acceleration = Vector2Add(boids[i].acceleration, separationForce);
-            UpdateBoid(&boids[i]);
+        }
+
+        for (int i = 0; i < boidCount; i++) {
+           UpdateBoid(&boids[i]);
         }
 
         double frame_time = omp_get_wtime() - frame_time_start;
