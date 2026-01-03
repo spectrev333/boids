@@ -291,6 +291,6 @@ int main(int argc, char** argv) {
 
     BoidGridFree(&boidGrid);
 
-    printf("Average frame time: %f", frameTimes / measurements);
+    printf("Average frame time: %f\n", frameTimes / measurements);
     return 0;
 }

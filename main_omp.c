@@ -295,7 +295,7 @@ int main(int argc, char** argv) {
             fprintf(csvfile, "%d;%f\n", frame, frame_time);
             frameTimes += frame_time;
             measurements++;
-        }
+        } // NO implicit barrier, but it's fine i think
     }
 
 
