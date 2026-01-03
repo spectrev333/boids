@@ -21,9 +21,6 @@
 #define PERCEPTION_RADIUS 50
 #define GRID_RESOLUTION 50
 
-#define BENCHMARK_MODE
-#define BENCHMARK_FRAMES 100
-
 typedef struct {
     Vector2 position;
     Vector2 velocity;
@@ -220,13 +217,22 @@ Vector2 RandomVector2(float min, float max) {
     };
 }
 
-int main() {
+int main(int argc, char** argv) {
+    srand(10);
+
+    if (argc < 3) {
+        fprintf(stderr, "USAGE: %s num_boids timesteps", argv[0]);
+        return 1;
+    }
+
+    const long int boidCount = strtol(argv[1], NULL, 10);
+    const long int timesteps = strtol(argv[2], NULL, 10);
+
     srand(10);
 
     FILE* csvfile = fopen("main.csv", "w");
     fprintf(csvfile,"frame_no;time\n");
 
-    const int boidCount = 50000;
     Boid boids[boidCount];
     int cellCapacity = 256;
     BoidGrid boidGrid = BoidGridAlloc(GRID_RESOLUTION, WORLD_SIZE / GRID_RESOLUTION, WORLD_SIZE / GRID_RESOLUTION,
@@ -245,11 +251,8 @@ int main() {
     double frameTimes = 0;
     double measurements = 0;
 
-#ifdef BENCHMARK_MODE
-    for (int frame = 0; frame < BENCHMARK_FRAMES; frame++) {
-#else
-        while (!WindowShouldClose()) {
-#endif
+    for (int frame = 0; frame < timesteps; frame++) {
+
         double frame_time_start = omp_get_wtime();
 
         for (int row = 0; row < boidGrid.gridHeight; row++) {
