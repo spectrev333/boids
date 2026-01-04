@@ -21,7 +21,6 @@
 #define PERCEPTION_RADIUS 50
 #define GRID_RESOLUTION 50
 
-#define BENCHMARK_MODE
 #define BENCHMARK_FRAMES 100
 
 typedef struct {
@@ -299,6 +298,9 @@ int main() {
             Vector2 separationForce = GetBoidSeparationForce(&boids[i], &localFlock, 50);
             boids[i].acceleration = Vector2Add(allignmentForce, cohesionForce);
             boids[i].acceleration = Vector2Add(boids[i].acceleration, separationForce);
+        }
+
+        for (int i = 0; i < boidCount; i++) {
             UpdateBoid(&boids[i]);
             DrawBoid(&boids[i]);
         }
