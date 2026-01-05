@@ -218,17 +218,16 @@ Vector2 RandomVector2(float min, float max) {
 }
 
 int main(int argc, char** argv) {
-    srand(10);
-
-    if (argc < 3) {
-        fprintf(stderr, "USAGE: %s num_boids timesteps", argv[0]);
+    if (argc < 4) {
+        fprintf(stderr, "USAGE: %s seed num_boids timesteps", argv[0]);
         return 1;
     }
 
-    const long int boidCount = strtol(argv[1], NULL, 10);
-    const long int timesteps = strtol(argv[2], NULL, 10);
+    const long int randSeed  = strtol(argv[1], NULL, 10);
+    const long int boidCount = strtol(argv[2], NULL, 10);
+    const long int timesteps = strtol(argv[3], NULL, 10);
 
-    srand(10);
+    srand(randSeed);
 
     FILE* csvfile = fopen("main.csv", "w");
     fprintf(csvfile,"frame_no;time\n");
